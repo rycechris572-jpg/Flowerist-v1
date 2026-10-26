@@ -1,0 +1,9 @@
+{
+  "geode": "v4.10.0",
+  "gd": {"win": "2.2074"},
+  "id": "pib.core-engine",
+  "name": "Predictive Input Buffer",
+  "version": "v1.0.0",
+  "developer": "PIB Team",
+  "description": "Input capture and rhythm estimation prototype for Geometry Dash on Windows."
+}
