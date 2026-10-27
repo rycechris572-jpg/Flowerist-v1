@@ -672,7 +672,7 @@ static void refreshBufferHud() {
             : fmt::format("BUFFER: {}/{} TICKS", normal, wave);
 
         s_bufferHud->setString(status.c_str());
-        s_bufferHud->setColor({115, 225, 255});
+        s_bufferHud->setColor({255, 105, 180});
     }
 }
 
