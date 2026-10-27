@@ -137,17 +137,17 @@ public:
 
     void cyclePreset() {
         constexpr int normalTicks[] = {
-            2, 4, 8, 16, 24, 32, 48, 54, 60, 120, 0
+            2, 4, 8, 16, 24, 32, 48, 54, 60, 0
         };
         constexpr int waveTicks[] = {
-            2, 4, 8, 8, 24, 32, 48, 54, 60, 120, 0
+            2, 4, 8, 8, 24, 32, 48, 54, 60, 0
         };
 
         m_presetIndex = (m_presetIndex + 1) % 11;
         m_waitTicks = -1;
         m_queuedOpposite = false;
 
-        m_enabled = m_presetIndex != 10;
+        m_enabled = m_presetIndex != 9;
         m_maxTicksNormal = normalTicks[m_presetIndex];
         m_maxTicksWave = waveTicks[m_presetIndex];
 
@@ -205,7 +205,8 @@ public:
         if (!pl || !m_simPlayer1 || !realP1) {
             return maxTicks;
         }
-
+maxTicks = std::clamp(maxTicks, 0, 60);
+delayFrames = std::clamp(delayFrames, 0, 60);
         m_simulating = true;
         m_simulationDead = false;
 
@@ -412,8 +413,7 @@ public:
         m_queuedOpposite = false;
         const char* act = push ? "PRESS" : "RELEASE";
 
-        int targetHorizon =
-            isMiniWave ? 50 : (isWave ? 65 : 160);
+        int targetHorizon = isMiniWave ? 50 : 60;
 
         int maxDelayFrames =
             isWave ? m_maxTicksWave : m_maxTicksNormal;
@@ -430,7 +430,14 @@ public:
         int bestDelay = 0;
         int bestTicks = ticksFrame0;
 
-        for (int delay = 1; delay <= maxDelayFrames; delay++) {
+        const int boundedMaxDelay = std::clamp(maxDelayFrames, 0, 60);
+const int candidateCount = std::min(boundedMaxDelay, 16);
+const int delayStep = candidateCount > 0
+    ? std::max(1, (boundedMaxDelay + candidateCount - 1) / candidateCount)
+    : 1;
+
+for (int delay = 1; delay <= boundedMaxDelay; delay += delayStep) {
+
             int ticks = getSurvivalTicks(
                 pl, p1, p2, isDual, delay, push, targetHorizon
             );
