@@ -656,7 +656,7 @@ public:
         return nullptr;
     }
     void registerWithTouchDispatcher() override {
-        cocos2d::CCTouchDispatcher::sharedDispatcher()->addTargetedDelegate(this, this->getTouchPriority(), true);
+        cocos2d::CCDirector::sharedDirector()->getTouchDispatcher()->addTargetedDelegate(this, this->getTouchPriority(), true);
     }
     bool ccTouchBegan(cocos2d::CCTouch*, cocos2d::CCEvent*) override { return true; }
     void ccTouchMoved(cocos2d::CCTouch*, cocos2d::CCEvent*) override {}
