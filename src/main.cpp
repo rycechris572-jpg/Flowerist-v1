@@ -649,14 +649,14 @@ public:
             layer->autorelease();
             layer->setTouchEnabled(true);
             layer->setTouchMode(cocos2d::kCCTouchesOneByOne);
-            layer->setTouchPriority(-129);
+            // Set the dispatcher priority only after this layer is attached to a running scene.
             return layer;
         }
         CC_SAFE_DELETE(layer);
         return nullptr;
     }
     void registerWithTouchDispatcher() override {
-        cocos2d::CCDirector::sharedDirector()->getTouchDispatcher()->addTargetedDelegate(this, this->getTouchPriority(), true);
+        cocos2d::CCTouchDispatcher::sharedDispatcher()->addTargetedDelegate(this, this->getTouchPriority(), true);
     }
     bool ccTouchBegan(cocos2d::CCTouch*, cocos2d::CCEvent*) override { return true; }
     void ccTouchMoved(cocos2d::CCTouch*, cocos2d::CCEvent*) override {}
@@ -861,6 +861,8 @@ static bool createFloweristConsole() {
     s_guiDimmer->setVisible(false);
     s_guiDimmer->setTouchEnabled(false);
     scene->addChild(s_guiDimmer, 999999);
+    // The layer is now running and registered with the dispatcher, so changing priority is safe.
+    s_guiDimmer->setTouchPriority(-129);
 
     s_consolePanel = cocos2d::CCLayerColor::create({24, 13, 28, 255}, s_guiWidth, s_guiHeight);
     if (!s_consolePanel) {
@@ -896,8 +898,8 @@ static bool createFloweristConsole() {
         return false;
     }
     s_guiNavMenu->setPosition({0.f, 0.f});
-    s_guiNavMenu->setHandlerPriority(-130);
     s_consolePanel->addChild(s_guiNavMenu, 5);
+    s_guiNavMenu->setHandlerPriority(-130);
     for (int i = 0; i < 8; ++i) {
         s_navItems[i] = floweristMenuLabel(s_guiNavMenu, s_guiActions, s_tabs[i], i,
             {s_guiNavWidth * 0.5f, s_guiHeight - 113.f - i * 36.f},
@@ -914,8 +916,8 @@ static bool createFloweristConsole() {
 
     s_closeMenu = cocos2d::CCMenu::create();
     s_closeMenu->setPosition({0.f, 0.f});
-    s_closeMenu->setHandlerPriority(-130);
     s_consolePanel->addChild(s_closeMenu, 20);
+    s_closeMenu->setHandlerPriority(-130);
     floweristRect(s_consolePanel, s_guiWidth - 42.f, s_guiHeight - 47.f, 26.f, 26.f, {65, 27, 57, 255}, 10);
     floweristMenuLabel(s_closeMenu, s_guiActions, "X", 0, {s_guiWidth - 29.f, s_guiHeight - 34.f}, menu_selector(FloweristGuiActions::close), 0.21f, {255, 170, 210});
 
@@ -953,8 +955,8 @@ static bool createFloweristConsole() {
     auto* stagesPage = s_guiPages[1];
     s_stageMenu = cocos2d::CCMenu::create();
     s_stageMenu->setPosition({0.f, 0.f});
-    s_stageMenu->setHandlerPriority(-130);
     stagesPage->addChild(s_stageMenu, 5);
+    s_stageMenu->setHandlerPriority(-130);
     const char* stageTitles[] = {"STAGE 1", "STAGE 2", "STAGE 3", "STAGE 4", "EXTREME", "CUSTOM"};
     const char* stageBodies[] = {"2 tick profile", "8 tick profile", "16 tick profile", "24 tick profile", "48 tick profile", "Manual profile"};
     float stageCardW = (pageW - 58.f) / 3.f;
@@ -971,8 +973,8 @@ static bool createFloweristConsole() {
     auto* modesPage = s_guiPages[2];
     s_modesMenu = cocos2d::CCMenu::create();
     s_modesMenu->setPosition({0.f, 0.f});
-    s_modesMenu->setHandlerPriority(-130);
     modesPage->addChild(s_modesMenu, 5);
+    s_modesMenu->setHandlerPriority(-130);
     float modeW = (pageW - 62.f) / 4.f;
     for (int i = 0; i < 8; ++i) {
         float x = 17.f + (i % 4) * (modeW + 9.f);
@@ -987,8 +989,8 @@ static bool createFloweristConsole() {
     auto* tuningPage = s_guiPages[3];
     s_tuningMenu = cocos2d::CCMenu::create();
     s_tuningMenu->setPosition({0.f, 0.f});
-    s_tuningMenu->setHandlerPriority(-130);
     tuningPage->addChild(s_tuningMenu, 5);
+    s_tuningMenu->setHandlerPriority(-130);
     float presetW = (pageW - 58.f) / 5.f;
     for (int i = 0; i < 10; ++i) {
         float x = 17.f + (i % 5) * (presetW + 6.f);
@@ -1014,8 +1016,8 @@ static bool createFloweristConsole() {
     auto* settingsPage = s_guiPages[6];
     s_settingsMenu = cocos2d::CCMenu::create();
     s_settingsMenu->setPosition({0.f, 0.f});
-    s_settingsMenu->setHandlerPriority(-130);
     settingsPage->addChild(s_settingsMenu, 5);
+    s_settingsMenu->setHandlerPriority(-130);
     floweristCard(settingsPage, 17.f, s_guiHeight - 211.f, pageW - 34.f, 100.f, "REDUCED MOTION", "Disable tab entrance animation effects.", {255, 83, 171, 255});
     floweristMenuLabel(s_settingsMenu, s_guiActions, "TOGGLE", 0,
         {pageW - 72.f, s_guiHeight - 160.f}, menu_selector(FloweristGuiActions::setting), 0.17f, {255, 185, 218});
