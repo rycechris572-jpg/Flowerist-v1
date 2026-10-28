@@ -612,10 +612,10 @@ public:
         if (s_guiBody && !s_reduceMotion) {
             s_guiBody->stopAllActions();
             s_guiBody->setOpacity(110);
-            s_guiBody->setPositionX(153.f);
+            s_guiBody->setPositionX(124.f);
             s_guiBody->runAction(cocos2d::CCSpawn::create(
-                cocos2d::CCFadeTo::create(0.19f, 255),
-                cocos2d::CCEaseBackOut::create(cocos2d::CCMoveTo::create(0.24f, {165.f, s_guiBody->getPositionY()})), nullptr));
+                cocos2d::CCFadeTo::create(0.14f, 255),
+                cocos2d::CCEaseBackOut::create(cocos2d::CCMoveTo::create(0.24f, {129.f, s_guiBody->getPositionY()})), nullptr));
         }
         renderFloweristTab();
     }
@@ -637,15 +637,18 @@ public:
 };
 static FloweristGuiActions* s_guiActions = nullptr;
 static cocos2d::CCMenu* s_stageMenu = nullptr;
+static cocos2d::CCMenu* s_modesMenu = nullptr;
+static std::vector<cocos2d::CCNode*> s_modeTiles;
 static void renderFloweristTab() {
     if (!s_guiBody) return;
     if (s_stageMenu) s_stageMenu->setVisible(s_activeTab == 1);
+    for (auto* tile : s_modeTiles) if (tile) tile->setVisible(s_activeTab == 2);
     if (s_guiTabTitle) s_guiTabTitle->setString(s_tabs[s_activeTab]);
-    if (s_guiAccent) s_guiAccent->setPositionY(185.f - s_activeTab * 22.f);
+    if (s_guiAccent) s_guiAccent->setPositionY(155.f - s_activeTab * 18.f);
     const char* pages[] = {
         "LATEST EVENT:\n\n",
         "CHOOSE A BUFFER STAGE\n\nLEARN FROM ATTEMPTS\nComing in a future build",
-        "CUBE  SHIP  BALL  UFO\nWAVE  ROBOT  SPIDER  SWING\nMINI MODES: planned\nPER-MODE ENABLE: planned",
+        "SELECT A GAMEMODE BELOW\nMINI VARIANTS: PLANNED\nPER-MODE TUNING: PLANNED",
         "MIN / MAX TICKS: planned\nCLICK & RELEASE: planned\nAUTO TUNE: planned\n60 TICK MAXIMUM",
         "AUTO STRAIGHT FLY: planned\nLEGIT STRAIGHT FLY: planned",
         "SHOW FPS / FPS BYPASS\nNO SHADERS / PARTICLES / GLOW\nAUTO LDM: planned",
@@ -659,35 +662,35 @@ static void renderFloweristTab() {
 static void createFloweristConsole(PlayLayer* layer) {
     if (!layer || s_consolePanel) return;
     const auto size = cocos2d::CCDirector::sharedDirector()->getWinSize();
-    const float w = std::min(460.f, size.width - 18.f);
-    const float h = std::min(265.f, size.height - 18.f);
-    s_consolePanel = cocos2d::CCLayerColor::create({18,16,26,248},w,h);
+    const float w = std::min(370.f, size.width - 24.f);
+    const float h = std::min(225.f, size.height - 24.f);
+    s_consolePanel = cocos2d::CCLayerColor::create({54,16,38,255},w,h);
     if (!s_consolePanel) return;
     s_consolePanel->setPosition({(size.width-w)*0.5f,(size.height-h)*0.5f});
     s_consolePanel->setZOrder(10000);
     s_consolePanel->setVisible(false);
-    layer->addChild(s_consolePanel);
+    cocos2d::CCDirector::sharedDirector()->getRunningScene()->addChild(s_consolePanel, 999999);
 
-    auto side = cocos2d::CCLayerColor::create({32,25,44,255},145.f,h);
+    auto side = cocos2d::CCLayerColor::create({92,29,65,255},113.f,h);
     s_consolePanel->addChild(side);
     auto border = cocos2d::CCLayerColor::create({255,105,180,255},w,2.f);
     border->setPosition({0,h-2.f});
     s_consolePanel->addChild(border);
-    auto divider = cocos2d::CCLayerColor::create({96,54,94,255},1.f,h-18.f);
-    divider->setPosition({145.f,8.f});
+    auto divider = cocos2d::CCLayerColor::create({193,75,130,255},1.f,h-18.f);
+    divider->setPosition({113.f,8.f});
     s_consolePanel->addChild(divider);
 
     s_consoleTitle = cocos2d::CCLabelBMFont::create("FLOWERIST", "bigFont.fnt");
     if (s_consoleTitle) {
         s_consoleTitle->setColor({255,105,180});
-        s_consoleTitle->setScale(0.49f);
-        s_consoleTitle->setPosition({72.f,h-23.f});
+        s_consoleTitle->setScale(0.38f);
+        s_consoleTitle->setPosition({56.f,h-21.f});
         s_consolePanel->addChild(s_consoleTitle);
     }
     auto subtitle = cocos2d::CCLabelBMFont::create("PREDICTIVE TOOLKIT", "bigFont.fnt");
-    subtitle->setScale(0.19f);
-    subtitle->setColor({180,143,196});
-    subtitle->setPosition({72.f,h-43.f});
+    subtitle->setScale(0.14f);
+    subtitle->setColor({255,175,209});
+    subtitle->setPosition({56.f,h-39.f});
     s_consolePanel->addChild(subtitle);
 
     s_guiActions = FloweristGuiActions::create();
@@ -695,29 +698,29 @@ static void createFloweristConsole(PlayLayer* layer) {
     s_guiMenu = cocos2d::CCMenu::create();
     s_guiMenu->setPosition({0,0});
     s_consolePanel->addChild(s_guiMenu);
-    s_guiAccent = cocos2d::CCLayerColor::create({255,105,180,255},3.f,17.f);
-    s_guiAccent->setPosition({5.f,185.f});
+    s_guiAccent = cocos2d::CCLayerColor::create({255,105,180,255},3.f,15.f);
+    s_guiAccent->setPosition({4.f,155.f});
     s_consolePanel->addChild(s_guiAccent);
     for (int i=0;i<8;++i) {
         auto label = cocos2d::CCLabelBMFont::create(s_tabs[i],"bigFont.fnt");
-        label->setScale(0.31f);
-        label->setColor({230,180,242});
+        label->setScale(0.235f);
+        label->setColor({255,202,225});
         auto item = cocos2d::CCMenuItemLabel::create(label,s_guiActions,menu_selector(FloweristGuiActions::tab));
         item->setTag(i);
-        item->setPosition({70.f,193.f-i*22.f});
+        item->setPosition({55.f,162.f-i*18.f});
         s_guiMenu->addChild(item);
     }
     s_guiTabTitle = cocos2d::CCLabelBMFont::create("STAGES","bigFont.fnt");
     s_guiTabTitle->setColor({255,105,180});
-    s_guiTabTitle->setScale(0.43f);
+    s_guiTabTitle->setScale(0.32f);
     s_guiTabTitle->setAnchorPoint({0.f,0.5f});
-    s_guiTabTitle->setPosition({165.f,h-27.f});
+    s_guiTabTitle->setPosition({129.f,h-22.f});
     s_consolePanel->addChild(s_guiTabTitle);
     s_guiBody = cocos2d::CCLabelBMFont::create("", "bigFont.fnt");
-    s_guiBody->setScale(0.29f);
-    s_guiBody->setColor({225,187,246});
+    s_guiBody->setScale(0.205f);
+    s_guiBody->setColor({255,215,232});
     s_guiBody->setAnchorPoint({0.f,1.f});
-    s_guiBody->setPosition({165.f,h-62.f});
+    s_guiBody->setPosition({129.f,h-51.f});
     s_consolePanel->addChild(s_guiBody);
     s_stageMenu = cocos2d::CCMenu::create();
     s_stageMenu->setPosition({0,0});
@@ -725,17 +728,34 @@ static void createFloweristConsole(PlayLayer* layer) {
     const char* names[] = {"1","2","3","4","EXTREME","CUSTOM"};
     for(int i=0;i<6;++i) {
         auto label=cocos2d::CCLabelBMFont::create(names[i],"bigFont.fnt");
-        label->setScale(i<4?0.33f:0.22f);
+        label->setScale(i<4?0.27f:0.17f);
         label->setColor({255,105,180});
         auto item=cocos2d::CCMenuItemLabel::create(label,s_guiActions,menu_selector(FloweristGuiActions::stage));
         item->setTag(i);
-        item->setPosition({168.f+(i%3)*90.f,85.f-(i/3)*24.f});
+        item->setPosition({150.f+(i%3)*67.f,77.f-(i/3)*23.f});
         s_stageMenu->addChild(item);
     }
+    s_modesMenu = cocos2d::CCMenu::create();
+    s_modesMenu->setPosition({0,0});
+    s_consolePanel->addChild(s_modesMenu);
+    const char* modeNames[] = {"CUBE","SHIP","BALL","UFO","WAVE","ROBOT","SPIDER","SWING"};
+    for (int i=0; i<8; ++i) {
+        auto tile = cocos2d::CCLayerColor::create({130,39,89,255},51.f,30.f);
+        tile->setPosition({128.f+(i%4)*57.f,66.f-(i/4)*37.f});
+        s_consolePanel->addChild(tile);
+        auto label=cocos2d::CCLabelBMFont::create(modeNames[i],"bigFont.fnt");
+        label->setScale(0.17f);
+        label->setColor({255,211,231});
+        label->setPosition({25.5f,15.f});
+        tile->addChild(label);
+        // Tiles remain noninteractive until per-mode buffering is implemented.
+        // They are shown/hidden with the Modes tab below.
+        s_modeTiles.push_back(tile);
+    }
     s_consoleStatus = cocos2d::CCLabelBMFont::create("BUFFER", "bigFont.fnt");
-    s_consoleStatus->setScale(0.25f);
+    s_consoleStatus->setScale(0.19f);
     s_consoleStatus->setColor({255,105,180});
-    s_consoleStatus->setPosition({(w+145.f)/2.f,14.f});
+    s_consoleStatus->setPosition({(w+113.f)/2.f,14.f});
     s_consolePanel->addChild(s_consoleStatus);
 
     // Lightweight decorative sparkles: no particle emitter or per-frame update.
@@ -743,7 +763,7 @@ static void createFloweristConsole(PlayLayer* layer) {
         auto star=cocos2d::CCLabelBMFont::create("+","bigFont.fnt");
         star->setScale(0.15f+(i%3)*0.045f);
         star->setColor({255,145,205});
-        star->setPosition({160.f+(i*43)%static_cast<int>(w-175.f),h-10.f-(i%3)*5.f});
+        star->setPosition({122.f+(i*29)%static_cast<int>(w-132.f),h-10.f-(i%3)*5.f});
         star->setOpacity(85);
         s_consolePanel->addChild(star);
         star->runAction(cocos2d::CCRepeatForever::create(cocos2d::CCSequence::create(
