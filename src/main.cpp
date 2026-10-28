@@ -781,20 +781,13 @@ static void refreshFloweristConsole() {
     s_consoleStatus->setString(str.c_str());
 }
 static void toggleFloweristConsole() {
-    s_consoleOpen = !s_consoleOpen;
     if (!s_consolePanel) return;
+
     s_consolePanel->stopAllActions();
-    s_consolePanel->setVisible(true);
-    if (s_reduceMotion) {
-        s_consolePanel->setVisible(s_consoleOpen);
-    } else if (s_consoleOpen) {
-        s_consolePanel->setScale(0.86f);
-        s_consolePanel->runAction(cocos2d::CCEaseBackOut::create(cocos2d::CCScaleTo::create(0.25f,1.f)));
-    } else {
-        s_consolePanel->runAction(cocos2d::CCSequence::create(
-            cocos2d::CCEaseBackIn::create(cocos2d::CCScaleTo::create(0.16f,0.86f)),
-            cocos2d::CCHide::create(), nullptr));
-    }
+    s_consoleOpen = !s_consoleOpen;
+    s_consolePanel->setScale(1.0f);
+    s_consolePanel->setVisible(s_consoleOpen);
+
     refreshFloweristConsole();
 }
 
