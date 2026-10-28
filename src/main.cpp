@@ -50,7 +50,7 @@ private:
 
     PlayerObject* createTrajectoryPlayer() {
         PlayLayer* pl = PlayLayer::get();
-        if (!pl) return nullptr;
+        if (!pl || !pl->m_objectLayer) return nullptr;
 
         PlayerObject* player =
             PlayerObject::create(1, 1, pl, pl, true);
@@ -669,7 +669,8 @@ static void createFloweristConsole(PlayLayer* layer) {
     s_consolePanel->setPosition({(size.width-w)*0.5f,(size.height-h)*0.5f});
     s_consolePanel->setZOrder(10000);
     s_consolePanel->setVisible(false);
-    cocos2d::CCDirector::sharedDirector()->getRunningScene()->addChild(s_consolePanel, 999999);
+    // Keep GUI lifetime tied to this level, not the outgoing running scene.
+    layer->addChild(s_consolePanel, 999999);
 
     auto side = cocos2d::CCLayerColor::create({92,29,65,255},113.f,h);
     s_consolePanel->addChild(side);
@@ -763,7 +764,7 @@ static void createFloweristConsole(PlayLayer* layer) {
         auto star=cocos2d::CCLabelBMFont::create("+","bigFont.fnt");
         star->setScale(0.15f+(i%3)*0.045f);
         star->setColor({255,145,205});
-        star->setPosition({122.f+(i*29)%static_cast<int>(w-132.f),h-10.f-(i%3)*5.f});
+        star->setPosition({122.f+(i*29)%std::max(1, static_cast<int>(w-132.f)),h-10.f-(i%3)*5.f});
         star->setOpacity(85);
         s_consolePanel->addChild(star);
         star->runAction(cocos2d::CCRepeatForever::create(cocos2d::CCSequence::create(
@@ -780,6 +781,31 @@ static void refreshFloweristConsole() {
         : std::string("BUFFER OFF");
     s_consoleStatus->setString(str.c_str());
 }
+// Call while the level is still alive. The GUI pointers below are non-owning.
+static void cleanupFloweristConsole() {
+    s_consoleOpen = false;
+    if (s_consolePanel) {
+        s_consolePanel->stopAllActions();
+        s_consolePanel->removeFromParentAndCleanup(true);
+    }
+    s_consolePanel = nullptr;
+    s_consoleTitle = nullptr;
+    s_consoleStatus = nullptr;
+    s_consoleHint = nullptr;
+    s_guiMenu = nullptr;
+    s_guiBody = nullptr;
+    s_guiLog = nullptr;
+    s_guiAccent = nullptr;
+    s_guiTabTitle = nullptr;
+    s_stageMenu = nullptr;
+    s_modesMenu = nullptr;
+    s_modeTiles.clear();
+    if (s_guiActions) {
+        s_guiActions->release();
+        s_guiActions = nullptr;
+    }
+}
+
 static void toggleFloweristConsole() {
     if (!s_consolePanel) return;
 
@@ -884,21 +910,11 @@ class $modify(BufPlayLayer, PlayLayer) {
     }
 
     void onQuit() {
-        s_bufferHud = nullptr;
-
-        s_consoleOpen = false;
-        s_consolePanel = nullptr;
-        s_consoleTitle = nullptr;
-        s_consoleStatus = nullptr;
-        s_consoleHint = nullptr;
-        s_guiBody = nullptr;
-        s_guiLog = nullptr;
-        s_guiMenu = nullptr;
-        s_stageMenu = nullptr;
-        if (s_guiActions) { s_guiActions->release(); s_guiActions = nullptr; }
-
-        PlayLayer::onQuit();
+        // Release child objects before base teardown invalidates the level.
         s_sim.quit();
+        cleanupFloweristConsole();
+        s_bufferHud = nullptr;
+        PlayLayer::onQuit();
     }
 };
 // ============================================================
@@ -1099,4 +1115,5 @@ class $modify(BufBaseGameLayer, GJBaseGameLayer) {
         GJBaseGameLayer::playerTouchedRing(player, ring);
     }
 };
+
 
