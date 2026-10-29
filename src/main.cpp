@@ -12,6 +12,8 @@
 #include <Windows.h>
 #include <cstdio>
 #include <algorithm>
+#include <cmath>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -610,6 +612,7 @@ static const int s_presetTicks[] = {2, 4, 8, 16, 24, 32, 48, 54, 60, 0};
 static cocos2d::CCLayerColor* s_guiDimmer = nullptr;
 static cocos2d::CCLayerColor* s_consolePanel = nullptr;
 static cocos2d::CCLayerColor* s_guiNavHighlight = nullptr;
+static cocos2d::CCNode* s_guiFlower = nullptr;
 static cocos2d::CCLabelBMFont* s_consoleTitle = nullptr;
 static cocos2d::CCLabelBMFont* s_consoleStatus = nullptr;
 static cocos2d::CCLabelBMFont* s_guiTabTitle = nullptr;
@@ -639,6 +642,7 @@ static void cleanupFloweristConsole();
 static void toggleFloweristConsole();
 static bool createFloweristConsole();
 static void setFloweristMenusEnabled(bool enabled);
+static void updateFloweristFlowerAnimation();
 
 // This transparent input shield keeps clicks on the overlay from reaching pause buttons behind it.
 class FloweristBackdrop : public cocos2d::CCLayerColor {
@@ -647,16 +651,16 @@ public:
         auto* layer = new FloweristBackdrop();
         if (layer && layer->initWithColor(color, width, height)) {
             layer->autorelease();
-            // Touch registration and priority are configured only after this node
-            // has been attached to a running scene.
+            layer->setTouchEnabled(true);
             layer->setTouchMode(cocos2d::kCCTouchesOneByOne);
+            layer->setTouchPriority(-129);
             return layer;
         }
         CC_SAFE_DELETE(layer);
         return nullptr;
     }
     void registerWithTouchDispatcher() override {
-        cocos2d::CCDirector::sharedDirector()->getTouchDispatcher()->addTargetedDelegate(this, this->getTouchPriority(), true);
+        cocos2d::CCTouchDispatcher::sharedDispatcher()->addTargetedDelegate(this, this->getTouchPriority(), true);
     }
     bool ccTouchBegan(cocos2d::CCTouch*, cocos2d::CCEvent*) override { return true; }
     void ccTouchMoved(cocos2d::CCTouch*, cocos2d::CCEvent*) override {}
@@ -691,6 +695,29 @@ static cocos2d::CCLayerColor* floweristRect(
     return rect;
 }
 
+static std::string floweristWrapText(const std::string& text, size_t maxChars) {
+    std::istringstream input(text);
+    std::string word;
+    std::string line;
+    std::string result;
+    maxChars = std::max<size_t>(18, maxChars);
+
+    while (input >> word) {
+        if (!line.empty() && line.size() + 1 + word.size() > maxChars) {
+            if (!result.empty()) result += "\n";
+            result += line;
+            line.clear();
+        }
+        if (!line.empty()) line += ' ';
+        line += word;
+    }
+    if (!line.empty()) {
+        if (!result.empty()) result += "\n";
+        result += line;
+    }
+    return result;
+}
+
 static cocos2d::CCLayerColor* floweristCard(
     cocos2d::CCNode* parent, float x, float y, float w, float h,
     const std::string& title, const std::string& body,
@@ -701,7 +728,11 @@ static cocos2d::CCLayerColor* floweristCard(
     floweristRect(card, 0.f, h - 2.f, w, 2.f, accent);
     floweristLabel(card, title, 13.f, h - 22.f, 0.235f, {255, 142, 200}, true);
     if (!body.empty()) {
-        auto* desc = floweristLabel(card, body, 13.f, h - 45.f, 0.19f, {232, 211, 228}, true, "chatFont.fnt");
+        const float bodyScale = 0.225f;
+        const auto maxChars = static_cast<size_t>(std::max(18.f, (w - 26.f) / 4.6f));
+        const std::string bodyText = (h > 64.f) ? floweristWrapText(body, maxChars) : body;
+        const float descY = h > 64.f ? h - 45.f : std::max(13.f, h - 32.f);
+        auto* desc = floweristLabel(card, bodyText, 13.f, descY, bodyScale, {232, 211, 228}, true, "chatFont.fnt");
         if (desc) desc->setAnchorPoint({0.f, 1.f});
     }
     return card;
@@ -722,8 +753,27 @@ public:
     }
     void tab(cocos2d::CCObject* sender) {
         if (!sender) return;
-        s_activeTab = std::clamp(static_cast<cocos2d::CCNode*>(sender)->getTag(), 0, 7);
+        const int nextTab = std::clamp(static_cast<cocos2d::CCNode*>(sender)->getTag(), 0, 7);
+        if (nextTab == s_activeTab) {
+            // Re-render the active page but leave its animations alone on repeated taps.
+            renderFloweristTab();
+            return;
+        }
+        s_activeTab = nextTab;
         renderFloweristTab();
+        // A tiny title/description fade gives feedback without animating layout or input hitboxes.
+        if (!s_reduceMotion) {
+            if (s_guiTabTitle) {
+                s_guiTabTitle->stopAllActions();
+                s_guiTabTitle->setOpacity(150);
+                s_guiTabTitle->runAction(cocos2d::CCFadeTo::create(0.14f, 255));
+            }
+            if (s_guiTabDescription) {
+                s_guiTabDescription->stopAllActions();
+                s_guiTabDescription->setOpacity(150);
+                s_guiTabDescription->runAction(cocos2d::CCFadeTo::create(0.16f, 255));
+            }
+        }
     }
     void stage(cocos2d::CCObject* sender) {
         if (!sender) return;
@@ -757,6 +807,7 @@ public:
         int settingTag = static_cast<cocos2d::CCNode*>(sender)->getTag();
         if (settingTag == 0) {
             s_reduceMotion = !s_reduceMotion;
+            updateFloweristFlowerAnimation();
             appendFloweristLog(std::string("Reduced motion ") + (s_reduceMotion ? "enabled" : "disabled"));
         } else if (settingTag == 1) {
             s_showBufferHud = !s_showBufferHud;
@@ -767,23 +818,40 @@ public:
     }
     void close(cocos2d::CCObject*) {
         s_consoleOpen = false;
+        if (s_consolePanel) {
+            s_consolePanel->stopAllActions();
+            s_consolePanel->setScale(1.f);
+        }
         if (s_guiDimmer) {
             s_guiDimmer->setVisible(false);
             s_guiDimmer->setTouchEnabled(false);
         }
         setFloweristMenusEnabled(false);
+        updateFloweristFlowerAnimation();
     }
 };
 
 static FloweristGuiActions* s_guiActions = nullptr;
 
 static void setFloweristMenusEnabled(bool enabled) {
+    // Hidden page menus used to remain touch-enabled and could swallow taps meant for tabs.
     if (s_guiNavMenu) s_guiNavMenu->setTouchEnabled(enabled);
     if (s_closeMenu) s_closeMenu->setTouchEnabled(enabled);
-    if (s_stageMenu) s_stageMenu->setTouchEnabled(enabled);
-    if (s_modesMenu) s_modesMenu->setTouchEnabled(enabled);
-    if (s_tuningMenu) s_tuningMenu->setTouchEnabled(enabled);
-    if (s_settingsMenu) s_settingsMenu->setTouchEnabled(enabled);
+    if (s_stageMenu) s_stageMenu->setTouchEnabled(enabled && s_activeTab == 1);
+    if (s_modesMenu) s_modesMenu->setTouchEnabled(enabled && s_activeTab == 2);
+    if (s_tuningMenu) s_tuningMenu->setTouchEnabled(enabled && s_activeTab == 3);
+    if (s_settingsMenu) s_settingsMenu->setTouchEnabled(enabled && s_activeTab == 6);
+}
+
+static void updateFloweristFlowerAnimation() {
+    if (!s_guiFlower) return;
+    s_guiFlower->stopAllActions();
+    s_guiFlower->setRotation(0.f);
+    if (s_consoleOpen && !s_reduceMotion) {
+        // One slow action on a tiny decorative node; no update loop or particles.
+        s_guiFlower->runAction(cocos2d::CCRepeatForever::create(
+            cocos2d::CCRotateBy::create(24.f, 360.f)));
+    }
 }
 
 static cocos2d::CCMenuItemLabel* floweristMenuLabel(
@@ -839,6 +907,37 @@ static void renderFloweristTab() {
         if (s_presetCards[i]) s_presetCards[i]->setColor((s_sim.enabled() && s_sim.normalTicks() == s_presetTicks[i]) || (!s_sim.enabled() && i == 9) ? cocos2d::ccColor3B{70, 29, 62} : cocos2d::ccColor3B{38, 22, 40});
     }
     if (s_guiLog) s_guiLog->setString(s_lastLog.c_str());
+    setFloweristMenusEnabled(s_consoleOpen);
+}
+
+static void createFloweristFlower() {
+    if (!s_consolePanel || s_guiFlower) return;
+    auto* flower = cocos2d::CCNode::create();
+    if (!flower) return;
+
+    // Six soft ring petals around a small center make a lightweight blossom watermark.
+    for (int i = 0; i < 6; ++i) {
+        const float angle = static_cast<float>(i) * 60.f * 3.14159265f / 180.f;
+        auto* petal = cocos2d::CCLabelBMFont::create("O", "bigFont.fnt");
+        if (!petal) continue;
+        petal->setScale(0.31f);
+        petal->setColor({255, 111, 184});
+        petal->setOpacity(58);
+        petal->setPosition({std::cos(angle) * 9.f, std::sin(angle) * 9.f});
+        flower->addChild(petal);
+    }
+    auto* center = cocos2d::CCLabelBMFont::create("+", "bigFont.fnt");
+    if (center) {
+        center->setScale(0.22f);
+        center->setColor({255, 198, 225});
+        center->setOpacity(78);
+        center->setPosition({0.f, 0.f});
+        flower->addChild(center, 2);
+    }
+    flower->setPosition({s_guiWidth - 82.f, s_guiHeight - 38.f});
+    flower->setScale(1.15f);
+    s_consolePanel->addChild(flower, 4);
+    s_guiFlower = flower;
 }
 
 static bool createFloweristConsole() {
@@ -849,22 +948,19 @@ static bool createFloweristConsole() {
     if (s_guiDimmer) return true;
 
     const auto size = director->getWinSize();
-    s_guiWidth = std::min(820.f, size.width - 36.f);
-    s_guiHeight = std::min(500.f, size.height - 36.f);
-    s_guiWidth = std::max(520.f, s_guiWidth);
-    s_guiHeight = std::max(340.f, s_guiHeight);
-    s_guiNavWidth = std::min(174.f, s_guiWidth * 0.245f);
+    s_guiWidth = std::min(760.f, size.width - 36.f);
+    s_guiHeight = std::min(460.f, size.height - 36.f);
+    // Keep the compact design on ordinary resolutions without forcing the panel off-screen.
+    s_guiWidth = std::max(std::min(480.f, size.width - 24.f), s_guiWidth);
+    s_guiHeight = std::max(std::min(320.f, size.height - 24.f), s_guiHeight);
+    s_guiNavWidth = std::min(164.f, s_guiWidth * 0.255f);
     s_guiContentWidth = s_guiWidth - s_guiNavWidth;
 
     s_guiDimmer = FloweristBackdrop::create({0, 0, 0, 156}, size.width, size.height);
     if (!s_guiDimmer) return false;
-    scene->addChild(s_guiDimmer, 999999);
-    // Now that the backdrop belongs to the scene, register it once to establish
-    // its priority safely; it is disabled again until the user opens the GUI.
-    s_guiDimmer->setTouchEnabled(true);
-    s_guiDimmer->setTouchPriority(-129);
-    s_guiDimmer->setTouchEnabled(false);
     s_guiDimmer->setVisible(false);
+    s_guiDimmer->setTouchEnabled(false);
+    scene->addChild(s_guiDimmer, 999999);
 
     s_consolePanel = cocos2d::CCLayerColor::create({24, 13, 28, 255}, s_guiWidth, s_guiHeight);
     if (!s_consolePanel) {
@@ -900,13 +996,26 @@ static bool createFloweristConsole() {
         return false;
     }
     s_guiNavMenu->setPosition({0.f, 0.f});
+    s_guiNavMenu->setHandlerPriority(-140);
     s_consolePanel->addChild(s_guiNavMenu, 5);
-    s_guiNavMenu->setHandlerPriority(-130);
     for (int i = 0; i < 8; ++i) {
         s_navItems[i] = floweristMenuLabel(s_guiNavMenu, s_guiActions, s_tabs[i], i,
             {s_guiNavWidth * 0.5f, s_guiHeight - 113.f - i * 36.f},
             menu_selector(FloweristGuiActions::tab), 0.205f,
             i == s_activeTab ? cocos2d::ccColor3B{255, 245, 251} : cocos2d::ccColor3B{211, 181, 204});
+        if (s_navItems[i]) {
+            const float rowW = s_guiNavWidth - 16.f;
+            const float rowH = 30.f;
+            // Widen the actual touch rect beyond the tiny glyphs, then re-center the label.
+            s_navItems[i]->setContentSize({rowW, rowH});
+            auto* navLabel = static_cast<cocos2d::CCLabelBMFont*>(s_navItems[i]->getLabel());
+            if (navLabel) {
+                const float naturalW = std::max(1.f, navLabel->getContentSize().width);
+                const float fitScale = std::min(0.205f, (rowW - 20.f) / naturalW);
+                navLabel->setScale(std::max(0.14f, fitScale));
+                navLabel->setPosition({rowW * 0.5f, rowH * 0.5f});
+            }
+        }
     }
     floweristLabel(s_consolePanel, "F2  /  TOGGLE", s_guiNavWidth * 0.5f, 37.f, 0.16f, {191, 143, 178}, false, "chatFont.fnt");
     floweristLabel(s_consolePanel, "v1.0.0  •  LOCAL", s_guiNavWidth * 0.5f, 20.f, 0.14f, {126, 101, 124}, false, "chatFont.fnt");
@@ -914,12 +1023,13 @@ static bool createFloweristConsole() {
     const float contentX = s_guiNavWidth + 19.f;
     floweristRect(s_consolePanel, contentX, s_guiHeight - 78.f, s_guiWidth - contentX - 18.f, 1.f, {66, 36, 64, 255});
     s_guiTabTitle = floweristLabel(s_consolePanel, s_tabs[s_activeTab], contentX, s_guiHeight - 33.f, 0.31f, {255, 130, 195}, true);
-    s_guiTabDescription = floweristLabel(s_consolePanel, s_tabDescriptions[s_activeTab], contentX, s_guiHeight - 55.f, 0.18f, {179, 151, 176}, true, "chatFont.fnt");
+    s_guiTabDescription = floweristLabel(s_consolePanel, s_tabDescriptions[s_activeTab], contentX, s_guiHeight - 55.f, 0.205f, {195, 169, 190}, true, "chatFont.fnt");
+    createFloweristFlower();
 
     s_closeMenu = cocos2d::CCMenu::create();
     s_closeMenu->setPosition({0.f, 0.f});
+    s_closeMenu->setHandlerPriority(-140);
     s_consolePanel->addChild(s_closeMenu, 20);
-    s_closeMenu->setHandlerPriority(-130);
     floweristRect(s_consolePanel, s_guiWidth - 42.f, s_guiHeight - 47.f, 26.f, 26.f, {65, 27, 57, 255}, 10);
     floweristMenuLabel(s_closeMenu, s_guiActions, "X", 0, {s_guiWidth - 29.f, s_guiHeight - 34.f}, menu_selector(FloweristGuiActions::close), 0.21f, {255, 170, 210});
 
@@ -947,9 +1057,9 @@ static bool createFloweristConsole() {
     floweristCard(overview, 37.f + statW * 2.f, s_guiHeight - 201.f, statW, 94.f, "WAVE LOOKAHEAD", fmt::format("{} TICKS", s_sim.waveTicks()), {255, 145, 196, 255});
     auto* logCard = floweristCard(overview, 17.f, 87.f, pageW - 34.f, 126.f, "LATEST ACTIVITY", "The latest buffer and profile event appears here.", {255, 83, 171, 255});
     if (logCard) {
-        s_guiLog = floweristLabel(logCard, s_lastLog, 13.f, 66.f, 0.19f, {243, 218, 235}, true, "chatFont.fnt");
+        s_guiLog = floweristLabel(logCard, s_lastLog, 13.f, 66.f, 0.255f, {243, 218, 235}, true, "chatFont.fnt");
         if (s_guiLog) s_guiLog->setAnchorPoint({0.f, 1.f});
-        floweristLabel(logCard, "F6 CYCLES THROUGH BUFFER PRESETS", 13.f, 24.f, 0.16f, {172, 135, 163}, true, "chatFont.fnt");
+        floweristLabel(logCard, "F6 CYCLES THROUGH BUFFER PRESETS", 13.f, 24.f, 0.205f, {192, 155, 183}, true, "chatFont.fnt");
     }
     floweristCard(overview, 17.f, 26.f, pageW - 34.f, 58.f, "SESSION", "GUI opens manually only. F2 works across supported game screens.", {142, 69, 125, 255});
 
@@ -957,8 +1067,8 @@ static bool createFloweristConsole() {
     auto* stagesPage = s_guiPages[1];
     s_stageMenu = cocos2d::CCMenu::create();
     s_stageMenu->setPosition({0.f, 0.f});
+    s_stageMenu->setHandlerPriority(-140);
     stagesPage->addChild(s_stageMenu, 5);
-    s_stageMenu->setHandlerPriority(-130);
     const char* stageTitles[] = {"STAGE 1", "STAGE 2", "STAGE 3", "STAGE 4", "EXTREME", "CUSTOM"};
     const char* stageBodies[] = {"2 tick profile", "8 tick profile", "16 tick profile", "24 tick profile", "48 tick profile", "Manual profile"};
     float stageCardW = (pageW - 58.f) / 3.f;
@@ -975,8 +1085,8 @@ static bool createFloweristConsole() {
     auto* modesPage = s_guiPages[2];
     s_modesMenu = cocos2d::CCMenu::create();
     s_modesMenu->setPosition({0.f, 0.f});
+    s_modesMenu->setHandlerPriority(-140);
     modesPage->addChild(s_modesMenu, 5);
-    s_modesMenu->setHandlerPriority(-130);
     float modeW = (pageW - 62.f) / 4.f;
     for (int i = 0; i < 8; ++i) {
         float x = 17.f + (i % 4) * (modeW + 9.f);
@@ -991,8 +1101,8 @@ static bool createFloweristConsole() {
     auto* tuningPage = s_guiPages[3];
     s_tuningMenu = cocos2d::CCMenu::create();
     s_tuningMenu->setPosition({0.f, 0.f});
+    s_tuningMenu->setHandlerPriority(-140);
     tuningPage->addChild(s_tuningMenu, 5);
-    s_tuningMenu->setHandlerPriority(-130);
     float presetW = (pageW - 58.f) / 5.f;
     for (int i = 0; i < 10; ++i) {
         float x = 17.f + (i % 5) * (presetW + 6.f);
@@ -1018,8 +1128,8 @@ static bool createFloweristConsole() {
     auto* settingsPage = s_guiPages[6];
     s_settingsMenu = cocos2d::CCMenu::create();
     s_settingsMenu->setPosition({0.f, 0.f});
+    s_settingsMenu->setHandlerPriority(-140);
     settingsPage->addChild(s_settingsMenu, 5);
-    s_settingsMenu->setHandlerPriority(-130);
     floweristCard(settingsPage, 17.f, s_guiHeight - 211.f, pageW - 34.f, 100.f, "REDUCED MOTION", "Disable tab entrance animation effects.", {255, 83, 171, 255});
     floweristMenuLabel(s_settingsMenu, s_guiActions, "TOGGLE", 0,
         {pageW - 72.f, s_guiHeight - 160.f}, menu_selector(FloweristGuiActions::setting), 0.17f, {255, 185, 218});
@@ -1047,6 +1157,7 @@ static void cleanupFloweristConsole() {
     s_guiDimmer = nullptr;
     s_consolePanel = nullptr;
     s_guiNavHighlight = nullptr;
+    s_guiFlower = nullptr;
     s_consoleTitle = nullptr;
     s_consoleStatus = nullptr;
     s_guiTabTitle = nullptr;
@@ -1094,21 +1205,27 @@ static void toggleFloweristConsole() {
         s_guiDimmer->setVisible(true);
         s_guiDimmer->setTouchEnabled(true);
         setFloweristMenusEnabled(true);
-        if (!s_reduceMotion) {
-            s_consolePanel->setScale(0.96f);
-            s_consolePanel->runAction(cocos2d::CCEaseBackOut::create(cocos2d::CCScaleTo::create(0.18f, 1.f)));
+        updateFloweristFlowerAnimation();
+        if (!s_reduceMotion && s_consolePanel) {
+            s_consolePanel->stopAllActions();
+            s_consolePanel->setScale(0.985f);
+            s_consolePanel->runAction(cocos2d::CCScaleTo::create(0.16f, 1.f));
         }
         return;
     }
     s_consoleOpen = !s_consoleOpen;
     s_guiDimmer->stopAllActions();
+    if (s_consolePanel) {
+        s_consolePanel->stopAllActions();
+        s_consolePanel->setScale(1.f);
+    }
     s_guiDimmer->setVisible(s_consoleOpen);
     s_guiDimmer->setTouchEnabled(s_consoleOpen);
     setFloweristMenusEnabled(s_consoleOpen);
+    updateFloweristFlowerAnimation();
     if (s_consoleOpen && s_consolePanel && !s_reduceMotion) {
-        s_consolePanel->stopAllActions();
-        s_consolePanel->setScale(0.96f);
-        s_consolePanel->runAction(cocos2d::CCEaseBackOut::create(cocos2d::CCScaleTo::create(0.18f, 1.f)));
+        s_consolePanel->setScale(0.985f);
+        s_consolePanel->runAction(cocos2d::CCScaleTo::create(0.16f, 1.f));
     }
     refreshFloweristConsole();
 }
