@@ -647,16 +647,16 @@ public:
         auto* layer = new FloweristBackdrop();
         if (layer && layer->initWithColor(color, width, height)) {
             layer->autorelease();
-            layer->setTouchEnabled(true);
+            // Touch registration and priority are configured only after this node
+            // has been attached to a running scene.
             layer->setTouchMode(cocos2d::kCCTouchesOneByOne);
-            // Set the dispatcher priority only after this layer is attached to a running scene.
             return layer;
         }
         CC_SAFE_DELETE(layer);
         return nullptr;
     }
     void registerWithTouchDispatcher() override {
-        cocos2d::CCTouchDispatcher::sharedDispatcher()->addTargetedDelegate(this, this->getTouchPriority(), true);
+        cocos2d::CCDirector::sharedDirector()->getTouchDispatcher()->addTargetedDelegate(this, this->getTouchPriority(), true);
     }
     bool ccTouchBegan(cocos2d::CCTouch*, cocos2d::CCEvent*) override { return true; }
     void ccTouchMoved(cocos2d::CCTouch*, cocos2d::CCEvent*) override {}
@@ -858,11 +858,13 @@ static bool createFloweristConsole() {
 
     s_guiDimmer = FloweristBackdrop::create({0, 0, 0, 156}, size.width, size.height);
     if (!s_guiDimmer) return false;
-    s_guiDimmer->setVisible(false);
-    s_guiDimmer->setTouchEnabled(false);
     scene->addChild(s_guiDimmer, 999999);
-    // The layer is now running and registered with the dispatcher, so changing priority is safe.
+    // Now that the backdrop belongs to the scene, register it once to establish
+    // its priority safely; it is disabled again until the user opens the GUI.
+    s_guiDimmer->setTouchEnabled(true);
     s_guiDimmer->setTouchPriority(-129);
+    s_guiDimmer->setTouchEnabled(false);
+    s_guiDimmer->setVisible(false);
 
     s_consolePanel = cocos2d::CCLayerColor::create({24, 13, 28, 255}, s_guiWidth, s_guiHeight);
     if (!s_consolePanel) {
