@@ -651,9 +651,9 @@ public:
         auto* layer = new FloweristBackdrop();
         if (layer && layer->initWithColor(color, width, height)) {
             layer->autorelease();
-            layer->setTouchEnabled(true);
-            layer->setTouchMode(cocos2d::kCCTouchesOneByOne);
             layer->setTouchPriority(-129);
+layer->setTouchMode(cocos2d::kCCTouchesOneByOne);
+layer->setTouchEnabled(true);
             return layer;
         }
         CC_SAFE_DELETE(layer);
