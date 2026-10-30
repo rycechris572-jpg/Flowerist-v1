@@ -651,9 +651,9 @@ public:
         auto* layer = new FloweristBackdrop();
         if (layer && layer->initWithColor(color, width, height)) {
             layer->autorelease();
-            layer->setTouchPriority(-129);
-            layer->setTouchMode(cocos2d::kCCTouchesOneByOne);
             layer->setTouchEnabled(true);
+            layer->setTouchMode(cocos2d::kCCTouchesOneByOne);
+            layer->setTouchPriority(1000); // Menus (-128) take taps before the shield
             return layer;
         }
         CC_SAFE_DELETE(layer);
@@ -723,16 +723,16 @@ static cocos2d::CCLayerColor* floweristCard(
     const std::string& title, const std::string& body,
     cocos2d::ccColor4B accent = {255, 93, 174, 255}
 ) {
-    auto* card = floweristRect(parent, x, y, w, h, {38, 22, 40, 255});
+    auto* card = floweristRect(parent, x, y, w, h, {38, 22, 40, 232});
     if (!card) return nullptr;
     floweristRect(card, 0.f, h - 2.f, w, 2.f, accent);
-    floweristLabel(card, title, 13.f, h - 22.f, 0.235f, {255, 142, 200}, true);
+    floweristLabel(card, title, 13.f, h - 22.f, 0.255f, {255, 158, 207}, true);
     if (!body.empty()) {
-        const float bodyScale = 0.225f;
+        const float bodyScale = 0.245f;
         const auto maxChars = static_cast<size_t>(std::max(18.f, (w - 26.f) / 4.6f));
         const std::string bodyText = (h > 64.f) ? floweristWrapText(body, maxChars) : body;
         const float descY = h > 64.f ? h - 45.f : std::max(13.f, h - 32.f);
-        auto* desc = floweristLabel(card, bodyText, 13.f, descY, bodyScale, {232, 211, 228}, true, "chatFont.fnt");
+        auto* desc = floweristLabel(card, bodyText, 13.f, descY, bodyScale, {245, 224, 239}, true, "chatFont.fnt");
         if (desc) desc->setAnchorPoint({0.f, 1.f});
     }
     return card;
@@ -759,9 +759,19 @@ public:
             renderFloweristTab();
             return;
         }
+        const auto previousHighlight = s_guiNavHighlight
+            ? s_guiNavHighlight->getPosition()
+            : cocos2d::CCPoint{0.f, 0.f};
         s_activeTab = nextTab;
         renderFloweristTab();
-        // A tiny title/description fade gives feedback without animating layout or input hitboxes.
+        if (!s_reduceMotion && s_guiNavHighlight) {
+            const auto target = s_guiNavHighlight->getPosition();
+            s_guiNavHighlight->stopAllActions();
+            s_guiNavHighlight->setPosition(previousHighlight);
+            s_guiNavHighlight->runAction(cocos2d::CCEaseSineOut::create(
+                cocos2d::CCMoveTo::create(0.20f, target)));
+        }
+        // Smooth cross-fade on the heading and subheading.
         if (!s_reduceMotion) {
             if (s_guiTabTitle) {
                 s_guiTabTitle->stopAllActions();
@@ -848,9 +858,14 @@ static void updateFloweristFlowerAnimation() {
     s_guiFlower->stopAllActions();
     s_guiFlower->setRotation(0.f);
     if (s_consoleOpen && !s_reduceMotion) {
-        // One slow action on a tiny decorative node; no update loop or particles.
         s_guiFlower->runAction(cocos2d::CCRepeatForever::create(
-            cocos2d::CCRotateBy::create(24.f, 360.f)));
+            cocos2d::CCRotateBy::create(22.f, 360.f)));
+        auto* pulse = cocos2d::CCSequence::create(
+            cocos2d::CCScaleTo::create(1.15f, 1.27f),
+            cocos2d::CCScaleTo::create(1.15f, 1.12f),
+            nullptr
+        );
+        s_guiFlower->runAction(cocos2d::CCRepeatForever::create(pulse));
     }
 }
 
@@ -948,12 +963,12 @@ static bool createFloweristConsole() {
     if (s_guiDimmer) return true;
 
     const auto size = director->getWinSize();
-    s_guiWidth = std::min(760.f, size.width - 36.f);
-    s_guiHeight = std::min(460.f, size.height - 36.f);
+    s_guiWidth = std::min(700.f, size.width - 36.f);
+    s_guiHeight = std::min(420.f, size.height - 36.f);
     // Keep the compact design on ordinary resolutions without forcing the panel off-screen.
-    s_guiWidth = std::max(std::min(480.f, size.width - 24.f), s_guiWidth);
-    s_guiHeight = std::max(std::min(320.f, size.height - 24.f), s_guiHeight);
-    s_guiNavWidth = std::min(164.f, s_guiWidth * 0.255f);
+    s_guiWidth = std::max(std::min(460.f, size.width - 24.f), s_guiWidth);
+    s_guiHeight = std::max(std::min(300.f, size.height - 24.f), s_guiHeight);
+    s_guiNavWidth = std::min(150.f, s_guiWidth * 0.255f);
     s_guiContentWidth = s_guiWidth - s_guiNavWidth;
 
     s_guiDimmer = FloweristBackdrop::create({0, 0, 0, 156}, size.width, size.height);
@@ -962,7 +977,7 @@ static bool createFloweristConsole() {
     s_guiDimmer->setTouchEnabled(false);
     scene->addChild(s_guiDimmer, 999999);
 
-    s_consolePanel = cocos2d::CCLayerColor::create({24, 13, 28, 255}, s_guiWidth, s_guiHeight);
+    s_consolePanel = cocos2d::CCLayerColor::create({24, 13, 28, 0}, s_guiWidth, s_guiHeight);
     if (!s_consolePanel) {
         cleanupFloweristConsole();
         return false;
@@ -970,27 +985,12 @@ static bool createFloweristConsole() {
     s_consolePanel->setPosition({(size.width - s_guiWidth) * 0.5f, (size.height - s_guiHeight) * 0.5f});
     s_guiDimmer->addChild(s_consolePanel, 10);
 
-    // Pink blossom wallpaper is bundled as a sprite resource.
-    // Use a pre-sized texture instead of loading a 4K texture every time F2 opens.
-    if (auto* wallpaper = cocos2d::CCSprite::create("flowerist_bg.png"_spr)) {
-        const auto imageSize = wallpaper->getContentSize();
-        if (imageSize.width > 0.f && imageSize.height > 0.f) {
-            wallpaper->setAnchorPoint({0.5f, 0.5f});
-            wallpaper->setPosition({s_guiWidth * 0.5f, s_guiHeight * 0.5f});
-            wallpaper->setScale(std::max(
-                s_guiWidth / imageSize.width,
-                s_guiHeight / imageSize.height
-            ));
-            s_consolePanel->addChild(wallpaper, 0);
-        }
-    }
-
     // Main frame: crisp edge, top accent, and separated navigation rail.
-    floweristRect(s_consolePanel, 0.f, 0.f, s_guiWidth, s_guiHeight, {71, 30, 61, 255}, 1);
-    floweristRect(s_consolePanel, 1.f, 1.f, s_guiWidth - 2.f, s_guiHeight - 2.f, {24, 13, 28, 165}, 2);
+    floweristRect(s_consolePanel, 0.f, 0.f, s_guiWidth, s_guiHeight, {71, 30, 61, 42}, 1);
+    floweristRect(s_consolePanel, 1.f, 1.f, s_guiWidth - 2.f, s_guiHeight - 2.f, {24, 13, 28, 78}, 2);
     floweristRect(s_consolePanel, 0.f, s_guiHeight - 3.f, s_guiWidth, 3.f, {255, 83, 171, 255}, 8);
-    floweristRect(s_consolePanel, 0.f, 0.f, s_guiNavWidth, s_guiHeight - 3.f, {31, 16, 34, 225}, 3);
-    floweristRect(s_consolePanel, s_guiNavWidth, 14.f, 1.f, s_guiHeight - 28.f, {75, 38, 70, 255}, 4);
+    floweristRect(s_consolePanel, 0.f, 0.f, s_guiNavWidth, s_guiHeight - 3.f, {31, 16, 34, 204}, 3);
+    floweristRect(s_consolePanel, s_guiNavWidth, 14.f, 1.f, s_guiHeight - 28.f, {102, 52, 91, 215}, 4);
     floweristRect(s_consolePanel, 0.f, 0.f, s_guiNavWidth, 2.f, {255, 83, 171, 255}, 9);
 
     floweristLabel(s_consolePanel, "FLOWERIST", s_guiNavWidth * 0.5f, s_guiHeight - 33.f, 0.42f, {255, 112, 190}, false);
@@ -1011,6 +1011,7 @@ static bool createFloweristConsole() {
         return false;
     }
     s_guiNavMenu->setPosition({0.f, 0.f});
+    s_guiNavMenu->setHandlerPriority(-140);
     s_consolePanel->addChild(s_guiNavMenu, 5);
     for (int i = 0; i < 8; ++i) {
         s_navItems[i] = floweristMenuLabel(s_guiNavMenu, s_guiActions, s_tabs[i], i,
@@ -1036,12 +1037,13 @@ static bool createFloweristConsole() {
 
     const float contentX = s_guiNavWidth + 19.f;
     floweristRect(s_consolePanel, contentX, s_guiHeight - 78.f, s_guiWidth - contentX - 18.f, 1.f, {66, 36, 64, 255});
-    s_guiTabTitle = floweristLabel(s_consolePanel, s_tabs[s_activeTab], contentX, s_guiHeight - 33.f, 0.31f, {255, 130, 195}, true);
-    s_guiTabDescription = floweristLabel(s_consolePanel, s_tabDescriptions[s_activeTab], contentX, s_guiHeight - 55.f, 0.205f, {195, 169, 190}, true, "chatFont.fnt");
+    s_guiTabTitle = floweristLabel(s_consolePanel, s_tabs[s_activeTab], contentX, s_guiHeight - 33.f, 0.34f, {255, 145, 203}, true);
+    s_guiTabDescription = floweristLabel(s_consolePanel, s_tabDescriptions[s_activeTab], contentX, s_guiHeight - 55.f, 0.22f, {221, 193, 215}, true, "chatFont.fnt");
     createFloweristFlower();
 
     s_closeMenu = cocos2d::CCMenu::create();
     s_closeMenu->setPosition({0.f, 0.f});
+    s_closeMenu->setHandlerPriority(-140);
     s_consolePanel->addChild(s_closeMenu, 20);
     floweristRect(s_consolePanel, s_guiWidth - 42.f, s_guiHeight - 47.f, 26.f, 26.f, {65, 27, 57, 255}, 10);
     floweristMenuLabel(s_closeMenu, s_guiActions, "X", 0, {s_guiWidth - 29.f, s_guiHeight - 34.f}, menu_selector(FloweristGuiActions::close), 0.21f, {255, 170, 210});
@@ -1070,9 +1072,9 @@ static bool createFloweristConsole() {
     floweristCard(overview, 37.f + statW * 2.f, s_guiHeight - 201.f, statW, 94.f, "WAVE LOOKAHEAD", fmt::format("{} TICKS", s_sim.waveTicks()), {255, 145, 196, 255});
     auto* logCard = floweristCard(overview, 17.f, 87.f, pageW - 34.f, 126.f, "LATEST ACTIVITY", "The latest buffer and profile event appears here.", {255, 83, 171, 255});
     if (logCard) {
-        s_guiLog = floweristLabel(logCard, s_lastLog, 13.f, 66.f, 0.255f, {243, 218, 235}, true, "chatFont.fnt");
+        s_guiLog = floweristLabel(logCard, floweristWrapText(s_lastLog, 56), 13.f, 66.f, 0.29f, {255, 235, 247}, true, "chatFont.fnt");
         if (s_guiLog) s_guiLog->setAnchorPoint({0.f, 1.f});
-        floweristLabel(logCard, "F6 CYCLES THROUGH BUFFER PRESETS", 13.f, 24.f, 0.205f, {192, 155, 183}, true, "chatFont.fnt");
+        floweristLabel(logCard, "F6 CYCLES THROUGH BUFFER PRESETS", 13.f, 24.f, 0.225f, {220, 180, 207}, true, "chatFont.fnt");
     }
     floweristCard(overview, 17.f, 26.f, pageW - 34.f, 58.f, "SESSION", "GUI opens manually only. F2 works across supported game screens.", {142, 69, 125, 255});
 
@@ -1080,6 +1082,7 @@ static bool createFloweristConsole() {
     auto* stagesPage = s_guiPages[1];
     s_stageMenu = cocos2d::CCMenu::create();
     s_stageMenu->setPosition({0.f, 0.f});
+    s_stageMenu->setHandlerPriority(-140);
     stagesPage->addChild(s_stageMenu, 5);
     const char* stageTitles[] = {"STAGE 1", "STAGE 2", "STAGE 3", "STAGE 4", "EXTREME", "CUSTOM"};
     const char* stageBodies[] = {"2 tick profile", "8 tick profile", "16 tick profile", "24 tick profile", "48 tick profile", "Manual profile"};
@@ -1097,6 +1100,7 @@ static bool createFloweristConsole() {
     auto* modesPage = s_guiPages[2];
     s_modesMenu = cocos2d::CCMenu::create();
     s_modesMenu->setPosition({0.f, 0.f});
+    s_modesMenu->setHandlerPriority(-140);
     modesPage->addChild(s_modesMenu, 5);
     float modeW = (pageW - 62.f) / 4.f;
     for (int i = 0; i < 8; ++i) {
@@ -1112,6 +1116,7 @@ static bool createFloweristConsole() {
     auto* tuningPage = s_guiPages[3];
     s_tuningMenu = cocos2d::CCMenu::create();
     s_tuningMenu->setPosition({0.f, 0.f});
+    s_tuningMenu->setHandlerPriority(-140);
     tuningPage->addChild(s_tuningMenu, 5);
     float presetW = (pageW - 58.f) / 5.f;
     for (int i = 0; i < 10; ++i) {
@@ -1138,6 +1143,7 @@ static bool createFloweristConsole() {
     auto* settingsPage = s_guiPages[6];
     s_settingsMenu = cocos2d::CCMenu::create();
     s_settingsMenu->setPosition({0.f, 0.f});
+    s_settingsMenu->setHandlerPriority(-140);
     settingsPage->addChild(s_settingsMenu, 5);
     floweristCard(settingsPage, 17.f, s_guiHeight - 211.f, pageW - 34.f, 100.f, "REDUCED MOTION", "Disable tab entrance animation effects.", {255, 83, 171, 255});
     floweristMenuLabel(s_settingsMenu, s_guiActions, "TOGGLE", 0,
@@ -1207,6 +1213,19 @@ static void refreshFloweristConsole() {
     renderFloweristTab();
 }
 
+static void animateFloweristPanelOpen() {
+    if (s_reduceMotion || !s_consolePanel) return;
+    s_consolePanel->stopAllActions();
+    const auto target = s_consolePanel->getPosition();
+    s_consolePanel->setScale(0.93f);
+    s_consolePanel->setPosition({target.x, target.y - 9.f});
+    s_consolePanel->runAction(cocos2d::CCSpawn::create(
+        cocos2d::CCEaseSineOut::create(cocos2d::CCScaleTo::create(0.23f, 1.f)),
+        cocos2d::CCEaseSineOut::create(cocos2d::CCMoveTo::create(0.23f, target)),
+        nullptr
+    ));
+}
+
 static void toggleFloweristConsole() {
     if (!s_guiDimmer) {
         if (!createFloweristConsole()) return;
@@ -1215,11 +1234,7 @@ static void toggleFloweristConsole() {
         s_guiDimmer->setTouchEnabled(true);
         setFloweristMenusEnabled(true);
         updateFloweristFlowerAnimation();
-        if (!s_reduceMotion && s_consolePanel) {
-            s_consolePanel->stopAllActions();
-            s_consolePanel->setScale(0.985f);
-            s_consolePanel->runAction(cocos2d::CCScaleTo::create(0.16f, 1.f));
-        }
+        animateFloweristPanelOpen();
         return;
     }
     s_consoleOpen = !s_consoleOpen;
@@ -1232,10 +1247,7 @@ static void toggleFloweristConsole() {
     s_guiDimmer->setTouchEnabled(s_consoleOpen);
     setFloweristMenusEnabled(s_consoleOpen);
     updateFloweristFlowerAnimation();
-    if (s_consoleOpen && s_consolePanel && !s_reduceMotion) {
-        s_consolePanel->setScale(0.985f);
-        s_consolePanel->runAction(cocos2d::CCScaleTo::create(0.16f, 1.f));
-    }
+    if (s_consoleOpen) animateFloweristPanelOpen();
     refreshFloweristConsole();
 }
 
