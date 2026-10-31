@@ -5,7 +5,7 @@
   },
   "id": "flowerist.core",
   "name": "Flowerist",
-  "version": "v1.0.0",
+  "version": "v2.5.0",
   "developer": "Flowerist Team",
   "description": "Input capture and rhythm estimation prototype for Geometry Dash on Windows.",
   "resources": {
