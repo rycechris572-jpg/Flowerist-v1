@@ -644,29 +644,8 @@ static bool createFloweristConsole();
 static void setFloweristMenusEnabled(bool enabled);
 static void updateFloweristFlowerAnimation();
 
-// This transparent input shield keeps clicks on the overlay from reaching pause buttons behind it.
-class FloweristBackdrop : public cocos2d::CCLayerColor {
-public:
-    static FloweristBackdrop* create(cocos2d::ccColor4B color, float width, float height) {
-        auto* layer = new FloweristBackdrop();
-        if (layer && layer->initWithColor(color, width, height)) {
-            layer->autorelease();
-            layer->setTouchEnabled(true);
-            layer->setTouchMode(cocos2d::kCCTouchesOneByOne);
-            layer->setTouchPriority(1000); // Menus (-128) take taps before the shield
-            return layer;
-        }
-        CC_SAFE_DELETE(layer);
-        return nullptr;
-    }
-    void registerWithTouchDispatcher() override {
-        cocos2d::CCDirector::sharedDirector()->getTouchDispatcher()->addTargetedDelegate(this, this->getTouchPriority(), true);
-    }
-    bool ccTouchBegan(cocos2d::CCTouch*, cocos2d::CCEvent*) override { return true; }
-    void ccTouchMoved(cocos2d::CCTouch*, cocos2d::CCEvent*) override {}
-    void ccTouchEnded(cocos2d::CCTouch*, cocos2d::CCEvent*) override {}
-};
-
+// A passive dimming layer: no touch dispatcher calls or priority mutation.
+// The overlay's CCMenu instances retain their normal click handling.
 static cocos2d::CCLabelBMFont* floweristLabel(
     cocos2d::CCNode* parent, const std::string& text,
     float x, float y, float scale, cocos2d::ccColor3B color,
@@ -834,7 +813,6 @@ public:
         }
         if (s_guiDimmer) {
             s_guiDimmer->setVisible(false);
-            s_guiDimmer->setTouchEnabled(false);
         }
         setFloweristMenusEnabled(false);
         updateFloweristFlowerAnimation();
@@ -971,10 +949,9 @@ static bool createFloweristConsole() {
     s_guiNavWidth = std::min(150.f, s_guiWidth * 0.255f);
     s_guiContentWidth = s_guiWidth - s_guiNavWidth;
 
-    s_guiDimmer = FloweristBackdrop::create({0, 0, 0, 156}, size.width, size.height);
+    s_guiDimmer = cocos2d::CCLayerColor::create({0, 0, 0, 156}, size.width, size.height);
     if (!s_guiDimmer) return false;
     s_guiDimmer->setVisible(false);
-    s_guiDimmer->setTouchEnabled(false);
     scene->addChild(s_guiDimmer, 999999);
 
     s_consolePanel = cocos2d::CCLayerColor::create({24, 13, 28, 0}, s_guiWidth, s_guiHeight);
@@ -984,6 +961,18 @@ static bool createFloweristConsole() {
     }
     s_consolePanel->setPosition({(size.width - s_guiWidth) * 0.5f, (size.height - s_guiHeight) * 0.5f});
     s_guiDimmer->addChild(s_consolePanel, 10);
+
+    // Use the bundled Flowerist blossom art as the panel background.
+    // It must be listed under resources/sprites in mod.json.
+    if (auto* wallpaper = cocos2d::CCSprite::create("flowerist_bg.png"_spr)) {
+        const auto bounds = wallpaper->getContentSize();
+        if (bounds.width > 0.f && bounds.height > 0.f) {
+            wallpaper->setPosition({s_guiWidth * 0.5f, s_guiHeight * 0.5f});
+            wallpaper->setScale(std::max(s_guiWidth / bounds.width,
+                                        s_guiHeight / bounds.height));
+            s_consolePanel->addChild(wallpaper, 0);
+        }
+    }
 
     // Main frame: crisp edge, top accent, and separated navigation rail.
     floweristRect(s_consolePanel, 0.f, 0.f, s_guiWidth, s_guiHeight, {71, 30, 61, 42}, 1);
@@ -1231,7 +1220,6 @@ static void toggleFloweristConsole() {
         if (!createFloweristConsole()) return;
         s_consoleOpen = true;
         s_guiDimmer->setVisible(true);
-        s_guiDimmer->setTouchEnabled(true);
         setFloweristMenusEnabled(true);
         updateFloweristFlowerAnimation();
         animateFloweristPanelOpen();
@@ -1244,7 +1232,6 @@ static void toggleFloweristConsole() {
         s_consolePanel->setScale(1.f);
     }
     s_guiDimmer->setVisible(s_consoleOpen);
-    s_guiDimmer->setTouchEnabled(s_consoleOpen);
     setFloweristMenusEnabled(s_consoleOpen);
     updateFloweristFlowerAnimation();
     if (s_consoleOpen) animateFloweristPanelOpen();
